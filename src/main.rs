@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use chain::Chain;
+use combinators::{TwoChannel, TwoChannelConfig};
 use config::Config;
 use cpal::{traits::StreamTrait, Sample};
 use effects::{Gate, LowPassFilter, FM};
@@ -11,13 +12,14 @@ use crate::voices::SineConfig;
 
 mod audio;
 mod chain;
+mod combinators;
 mod config;
 mod effects;
 mod synth;
 mod voices;
 
 fn main() {
-    let voice = Sine::new(20.0);
+    let voice = Sine::new(400.0);
     let modulator = Sine::new(20.0);
     let mod_hz_sender = modulator.config.sender.clone();
     let mut mod_hz = 20.0;
@@ -29,15 +31,24 @@ fn main() {
     chain.add(Box::new(Gate { cutoff_config }));
     let chained = Chained::new(fm, chain);
 
+    let sine_2 = Sine::new(440.0);
+    let mix = TwoChannel::new(chained, sine_2);
+    let mix_config_sender = mix.config.sender.clone();
+    let mut mix_config = TwoChannelConfig {
+        a_mix: 1.0,
+        b_mix: 0.0,
+    };
+
     let mut synth = Synth::new();
-    synth.play(Arc::new(Mutex::new(chained)));
+    synth.play(Arc::new(Mutex::new(mix)));
 
     loop {
         let mut input = String::new();
-        println!("{}, press any key", mod_hz);
+        println!("{:?}, press any key", mix_config);
         std::io::stdin().read_line(&mut input).unwrap();
 
-        mod_hz += 1.0;
-        mod_hz_sender.send(SineConfig { hz: mod_hz }).unwrap();
+        mix_config.a_mix -= 0.1;
+        mix_config.b_mix += 0.1;
+        mix_config_sender.send(mix_config).unwrap();
     }
 }
