@@ -1,18 +1,15 @@
-pub trait Effect<Signal> {
+use crate::config::{Config, ConfigReceiver};
+
+pub trait Effect<Signal>: ConfigReceiver {
     fn process(&mut self, signal: Signal) -> Signal;
 }
 
-pub trait Voice<Signal> {
+pub trait Voice<Signal>: ConfigReceiver {
     fn generate(&mut self) -> Signal;
 }
 
-pub enum ChainItem<Signal> {
-    Effect(Box<dyn Effect<Signal>>),
-    Voice(Box<dyn Voice<Signal>>),
-}
-
 pub struct Chain<Signal> {
-    pub chain: Vec<Box<dyn Effect<Signal> + Send + Sync + 'static>>,
+    pub chain: Vec<Box<dyn Effect<Signal> + Send + 'static>>,
 }
 
 impl<Signal> Chain<Signal> {
@@ -20,8 +17,16 @@ impl<Signal> Chain<Signal> {
         Chain { chain: Vec::new() }
     }
 
-    pub fn add(&mut self, effect: Box<dyn Effect<Signal> + Send + Sync + 'static>) {
+    pub fn add(&mut self, effect: Box<dyn Effect<Signal> + Send + 'static>) {
         self.chain.push(effect);
+    }
+}
+
+impl<S> ConfigReceiver for Chain<S> {
+    fn try_update_configs(&mut self) {
+        for effect in self.chain.iter_mut() {
+            effect.try_update_configs();
+        }
     }
 }
 

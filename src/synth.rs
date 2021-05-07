@@ -1,4 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    borrow::BorrowMut,
+    marker::PhantomData,
+    sync::{Arc, Mutex},
+};
 
 use cpal::{traits::StreamTrait, Stream};
 
@@ -9,34 +13,35 @@ use crate::{
 };
 
 pub struct Synth<V: Voice<f32> + Send + 'static> {
-    pub voice: Arc<Mutex<V>>,
     audio: Audio,
     stream: Option<Stream>,
+    _phantom: PhantomData<V>,
 }
 
 impl<V: Voice<f32> + Send> Synth<V> {
-    pub fn new(voice: V) -> Self {
+    pub fn new() -> Self {
         Self {
-            voice: Arc::new(Mutex::new(voice)),
             audio: Audio::new(),
             stream: None,
+            _phantom: PhantomData,
         }
     }
 
-    pub fn play(&mut self) {
+    pub fn play(&mut self, voice: Arc<Mutex<V>>) {
         if self.stream.is_none() {
-            let voice = Arc::clone(&self.voice);
-            let stream = self
-                .audio
-                .stream_with(move |data: &mut [f32]| put_samples(Arc::clone(&voice), data));
+            let stream = self.audio.stream_with(move |data: &mut [f32]| {
+                let mut v = voice.lock().unwrap();
+                v.try_update_configs();
+                put_samples(&mut *v, data);
+            });
             stream.play().unwrap();
             self.stream = Some(stream);
         }
     }
 }
 
-fn put_samples<V: Voice<f32>>(voice: Arc<Mutex<V>>, data: &mut [f32]) {
+fn put_samples<V: Voice<f32>>(voice: &mut V, data: &mut [f32]) {
     for slot in data {
-        *slot = voice.lock().unwrap().generate();
+        *slot = voice.generate();
     }
 }
