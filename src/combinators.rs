@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     chain::Voice,
-    config::{Config, ConfigReceiver, HasConfig, ValidatedConfig},
+    config::{Config, ConfigReceiver, HasConfig, ValidatedConfig, ValidatedConfigClient},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -25,6 +25,8 @@ pub struct TwoChannel<S, Va: Voice<S>, Vb: Voice<S>> {
     pub config: ValidatedConfig<TwoChannelConfig, fn(TwoChannelConfig) -> bool>,
     _phantom: PhantomData<S>,
 }
+
+pub type TwoChannelClient = ValidatedConfigClient<TwoChannelConfig, fn(TwoChannelConfig) -> bool>;
 
 impl<S, Va: Voice<S>, Vb: Voice<S>> TwoChannel<S, Va, Vb> {
     pub fn new(a: Va, b: Vb) -> Self {

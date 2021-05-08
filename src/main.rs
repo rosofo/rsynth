@@ -6,6 +6,7 @@ use config::Config;
 use cpal::{traits::StreamTrait, Sample};
 use effects::{Gate, LowPassFilter, FM};
 use synth::Synth;
+use ui::{draw_synth, get_terminal};
 use voices::{Chained, Sine};
 
 use crate::voices::SineConfig;
@@ -16,9 +17,11 @@ mod combinators;
 mod config;
 mod effects;
 mod synth;
+mod ui;
 mod voices;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let voice = Sine::new(400.0);
     let mut modulator = Sine::new(20.0);
     let fm = FM::new(modulator, voice);
@@ -35,14 +38,17 @@ fn main() {
     let mut synth = Synth::new();
     synth.play(Arc::new(Mutex::new(mix)));
 
+    let mut terminal = get_terminal().unwrap();
+
     loop {
         let mut input = String::new();
-        println!("{:?}, press any key", mix_config_client.get());
         std::io::stdin().read_line(&mut input).unwrap();
 
         let mut config = mix_config_client.get();
         config.a_mix -= 0.1;
         config.b_mix += 0.1;
         mix_config_client.update(config);
+
+        draw_synth(&mut terminal, &mix_config_client).unwrap();
     }
 }

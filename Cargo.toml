@@ -11,3 +11,6 @@ cpal = { version = "*" }
 crossbeam = "*"
 petgraph = { version = "*"}
 num = "*"
+crossterm = "*"
+tui = { version = "*", default-features = false, features = ['crossterm'] }
+tokio = { version = "*", features = ["full"] }
