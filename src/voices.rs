@@ -14,6 +14,7 @@ pub trait HasFreq {
 pub trait Waveform<Signal>: HasFreq + Voice<Signal> {}
 impl<S, T: HasFreq + Voice<S>> Waveform<S> for T {}
 
+#[derive(Clone, Copy)]
 pub struct SineConfig {
     pub hz: f32,
 }

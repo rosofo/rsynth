@@ -51,13 +51,13 @@ pub struct Gate<Signal> {
     pub cutoff_config: Config<Signal>,
 }
 
-impl<S> ConfigReceiver for Gate<S> {
+impl<S: Copy> ConfigReceiver for Gate<S> {
     fn try_update_configs(&mut self) {
         self.cutoff_config.try_update();
     }
 }
 
-impl<Signal: PartialOrd + Signed + Default> Effect<Signal> for Gate<Signal> {
+impl<Signal: PartialOrd + Signed + Default + Copy> Effect<Signal> for Gate<Signal> {
     fn process(&mut self, signal: Signal) -> Signal {
         if signal.abs() < self.cutoff_config.config {
             signal
