@@ -22,18 +22,18 @@ fn validate_two_channel_config(config: TwoChannelConfig) -> bool {
 pub struct TwoChannel<S, Va: Voice<S>, Vb: Voice<S>> {
     pub a: Va,
     pub b: Vb,
-    pub config: ValidatedConfig<TwoChannelConfig, fn(TwoChannelConfig) -> bool>,
+    pub config: ValidatedConfig<TwoChannelConfig>,
     _phantom: PhantomData<S>,
 }
 
-pub type TwoChannelClient = ValidatedConfigClient<TwoChannelConfig, fn(TwoChannelConfig) -> bool>;
+pub type TwoChannelClient = ValidatedConfigClient<TwoChannelConfig>;
 
 impl<S, Va: Voice<S>, Vb: Voice<S>> TwoChannel<S, Va, Vb> {
     pub fn new(a: Va, b: Vb) -> Self {
         Self {
             a,
             b,
-            config: ValidatedConfig::new(
+            config: ValidatedConfig::new_validated(
                 TwoChannelConfig {
                     a_mix: 0.5,
                     b_mix: 0.5,

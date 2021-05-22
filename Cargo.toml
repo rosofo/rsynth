@@ -11,6 +11,5 @@ cpal = { version = "*" }
 crossbeam = "*"
 petgraph = { version = "*"}
 num = "*"
-crossterm = "*"
+crossterm = { version = "*", features = ["event-stream"]}
 tui = { version = "*", default-features = false, features = ['crossterm'] }
-tokio = { version = "*", features = ["full"] }

@@ -84,8 +84,12 @@ impl<S, M: Waveform<S>, V: Waveform<S>> FM<S, M, V> {
 }
 
 impl<S, M: Waveform<S>, V: Waveform<S>> HasFreq for FM<S, M, V> {
-    fn freq(&mut self, hz: f32) {
-        self.modulator.freq(hz);
+    fn set_freq(&mut self, hz: f32) {
+        self.modulator.set_freq(hz);
+    }
+
+    fn get_freq(&self) -> f32 {
+        self.modulator.get_freq()
     }
 }
 
@@ -98,7 +102,8 @@ impl<S, M: Waveform<S>, V: Waveform<S>> ConfigReceiver for FM<S, M, V> {
 
 impl<S: NumCast, M: Waveform<S>, V: Waveform<S>> Voice<S> for FM<S, M, V> {
     fn generate(&mut self) -> S {
-        self.voice.freq(self.modulator.generate().to_f32().unwrap());
+        self.voice
+            .set_freq(self.modulator.generate().to_f32().unwrap());
         self.voice.generate()
     }
 }

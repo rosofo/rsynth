@@ -8,7 +8,8 @@ use crate::{
 };
 
 pub trait HasFreq {
-    fn freq(&mut self, hz: f32);
+    fn set_freq(&mut self, hz: f32);
+    fn get_freq(&self) -> f32;
 }
 
 pub trait Waveform<Signal>: HasFreq + Voice<Signal> {}
@@ -17,6 +18,16 @@ impl<S, T: HasFreq + Voice<S>> Waveform<S> for T {}
 #[derive(Clone, Copy)]
 pub struct SineConfig {
     pub hz: f32,
+}
+
+impl HasFreq for SineConfig {
+    fn set_freq(&mut self, hz: f32) {
+        self.hz = hz;
+    }
+
+    fn get_freq(&self) -> f32 {
+        self.hz
+    }
 }
 
 pub struct Sine<Signal> {
@@ -68,8 +79,12 @@ impl Voice<f32> for Sine<f32> {
 }
 
 impl<S> HasFreq for Sine<S> {
-    fn freq(&mut self, hz: f32) {
+    fn set_freq(&mut self, hz: f32) {
         self.hz = hz;
+    }
+
+    fn get_freq(&self) -> f32 {
+        self.hz
     }
 }
 
