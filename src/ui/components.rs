@@ -7,21 +7,33 @@ use crossterm::event::KeyCode;
 use tui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Style},
     widgets::{BarChart, Block, Borders, Clear, Paragraph, Widget},
 };
 
 use crate::{
     chain::Voice,
-    combinators::{TwoChannelClient, TwoChannelConfig},
-    config::ConfigClient,
+    combinators::{MixerClient, TwoChannelClient, TwoChannelConfig},
+    config::{ComposeConfigClient, ConfigClient},
     controllers::{KBConfigAction, KeyboardControllerClient},
-    voices::HasFreq,
+    voices::{AdditiveAction, AdditiveConfig, HasFreq},
 };
 
 use super::input::InputEvent;
 
 pub trait UIComponent: RefWidget {
     fn dispatch(&mut self, event: InputEvent);
+}
+
+impl UIComponent for Box<dyn UIComponent + Send + 'static> {
+    fn dispatch(&mut self, event: InputEvent) {
+        (**self).dispatch(event)
+    }
+}
+impl RefWidget for Box<dyn UIComponent + Send + 'static> {
+    fn render(&self, area: Rect, buf: &mut Buffer) {
+        (**self).render(area, buf)
+    }
 }
 
 pub trait RefWidget {
@@ -62,7 +74,7 @@ impl UIComponent for TwoChannelComponent {
 }
 
 fn increment_channel(mixer: &mut TwoChannelClient, ch: isize, amount: f32) {
-    mixer.update(|cf: TwoChannelConfig| TwoChannelConfig {
+    mixer.update(|cf| TwoChannelConfig {
         a_mix: if ch == 0 { cf.a_mix + amount } else { cf.a_mix },
         b_mix: if ch == 1 { cf.b_mix + amount } else { cf.b_mix },
     });
@@ -132,44 +144,6 @@ impl UIComponent for ChainComponent {
     }
 }
 
-pub struct VoiceComponent<C> {
-    voice_client: Arc<Mutex<ConfigClient<C>>>,
-}
-
-impl<C> VoiceComponent<C> {
-    pub fn new(voice_client: ConfigClient<C>) -> Self {
-        Self {
-            voice_client: Arc::new(Mutex::new(voice_client)),
-        }
-    }
-}
-
-impl<C: HasFreq + Copy> UIComponent for VoiceComponent<C> {
-    fn dispatch(&mut self, event: InputEvent) {
-        let mut client = self.voice_client.lock().unwrap();
-        match event {
-            InputEvent::Down => client.update(|mut config| {
-                config.set_freq(config.get_freq() - 10.0);
-                config
-            }),
-            InputEvent::Up => client.update(|mut config| {
-                config.set_freq(config.get_freq() + 10.0);
-                config
-            }),
-            _ => {}
-        }
-    }
-}
-
-impl<C: HasFreq + Copy> RefWidget for VoiceComponent<C> {
-    fn render(&self, area: Rect, buf: &mut Buffer) {
-        let voice_config = self.voice_client.lock().unwrap().get();
-        let p = Paragraph::new(voice_config.get_freq().to_string())
-            .block(Block::default().borders(Borders::ALL));
-        p.render(area, buf);
-    }
-}
-
 pub struct WrapperWidget<F: FnOnce(Rect, &mut Buffer)> {
     pub func: F,
 }
@@ -216,4 +190,169 @@ fn parse_keyboard_action(event: InputEvent) -> Option<KBConfigAction> {
 
 impl RefWidget for KeyboardInputComponent {
     fn render(&self, area: Rect, buf: &mut Buffer) {}
+}
+
+pub struct MixerComponent {
+    pub client: MixerClient,
+}
+
+impl RefWidget for MixerComponent {
+    fn render(&self, area: Rect, buf: &mut Buffer) {
+        let rects = Layout::default()
+            .constraints([Constraint::Percentage(100)].as_ref())
+            .margin(5)
+            .split(area);
+
+        let data = self
+            .client
+            .get()
+            .channels
+            .iter()
+            .enumerate()
+            .map(|(channel, volume)| (channel.to_string(), *volume as u64))
+            .collect::<Vec<(String, u64)>>();
+
+        let data = data
+            .iter()
+            .map(|(label, v)| (label.as_str(), *v))
+            .collect::<Vec<(&str, u64)>>();
+
+        let bars = BarChart::default()
+            .block(Block::default().borders(Borders::ALL).title("Mixer"))
+            .bar_width(3)
+            .bar_gap(3)
+            .data(data.as_slice());
+
+        Clear.render(area, buf);
+        bars.render(rects[0], buf);
+    }
+}
+
+impl UIComponent for MixerComponent {
+    fn dispatch(&mut self, event: InputEvent) {}
+}
+
+pub struct NavigationContainer<C: UIComponent> {
+    components: Vec<C>,
+    direction: Direction,
+    selected: usize,
+    focused: Option<usize>,
+}
+
+impl<C: UIComponent> NavigationContainer<C> {
+    pub fn new(components: Vec<C>, direction: Direction) -> Self {
+        Self {
+            components,
+            direction,
+            focused: None,
+            selected: 0,
+        }
+    }
+
+    fn handle_movement(&mut self, event: InputEvent) {
+        match event {
+            InputEvent::Enter => {
+                self.focused = Some(self.selected);
+                return;
+            }
+            _ => {}
+        }
+
+        match self.direction {
+            Direction::Horizontal => match event {
+                InputEvent::Left => {
+                    if self.selected > 0 {
+                        self.selected -= 1
+                    }
+                }
+                InputEvent::Right => {
+                    if self.selected < self.components.len() - 1 {
+                        self.selected += 1
+                    }
+                }
+                _ => {}
+            },
+            Direction::Vertical => match event {
+                InputEvent::Up => {
+                    if self.selected > 0 {
+                        self.selected -= 1
+                    }
+                }
+                InputEvent::Down => {
+                    if self.selected < self.components.len() - 1 {
+                        self.selected += 1
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
+
+    fn render_indicator_blocks(&self, index: usize, rect: Rect, buf: &mut Buffer) {
+        if index == self.selected {
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::White))
+                .render(rect, buf);
+        }
+
+        if let Some(focused) = self.focused {
+            if index == focused {
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Blue))
+                    .render(rect, buf);
+            }
+        }
+    }
+}
+
+impl<C: UIComponent> RefWidget for NavigationContainer<C> {
+    fn render(&self, area: Rect, buf: &mut Buffer) {
+        let constraints: Vec<Constraint> =
+            [Constraint::Percentage(100 / (self.components.len() as u16))]
+                .iter()
+                .cycle()
+                .copied()
+                .take(self.components.len())
+                .collect();
+        let row = Layout::default()
+            .direction(self.direction.clone())
+            .constraints(constraints)
+            .split(area);
+
+        for (index, (rect, component)) in row.into_iter().zip(self.components.iter()).enumerate() {
+            self.render_indicator_blocks(index, rect, buf);
+
+            component.render(rect, buf);
+        }
+    }
+}
+
+impl<C: UIComponent> UIComponent for NavigationContainer<C> {
+    fn dispatch(&mut self, event: InputEvent) {
+        if let Some(index) = self.focused {
+            self.components[index].dispatch(event);
+        } else {
+            self.handle_movement(event);
+        }
+    }
+}
+
+pub struct AdditiveComponent {
+    pub client: ComposeConfigClient<
+        AdditiveConfig,
+        AdditiveAction,
+        fn(AdditiveConfig, AdditiveAction) -> AdditiveConfig,
+    >,
+}
+
+impl RefWidget for AdditiveComponent {
+    fn render(&self, area: Rect, buf: &mut Buffer) {
+        Paragraph::new(format!("{:?}", self.client.get())).render(area, buf);
+    }
+}
+
+impl UIComponent for AdditiveComponent {
+    fn dispatch(&mut self, event: InputEvent) {}
 }

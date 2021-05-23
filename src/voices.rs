@@ -1,10 +1,11 @@
-use std::{marker::PhantomData, sync::Arc, time::Instant};
+use std::{marker::PhantomData, ops::Add, sync::Arc, time::Instant};
 
 use crossbeam::atomic::AtomicCell;
 
 use crate::{
     chain::{Chain, Effect, Voice},
-    config::{Config, ConfigReceiver},
+    combinators::Mixer,
+    config::{ComposeConfig, Config, ConfigReceiver, HasConfig},
 };
 
 pub trait HasFreq {
@@ -116,5 +117,77 @@ impl<S, V: Voice<S> + ConfigReceiver, E: Effect<S> + ConfigReceiver> ConfigRecei
     fn try_update_configs(&mut self) {
         self.voice.try_update_configs();
         self.effect.try_update_configs();
+    }
+}
+
+pub struct Additive<V: Waveform<f32>> {
+    pub config: ComposeConfig<
+        AdditiveConfig,
+        AdditiveAction,
+        fn(AdditiveConfig, AdditiveAction) -> AdditiveConfig,
+    >,
+    pub mixer: Mixer<V>,
+}
+
+impl Additive<Sine<f32>> {
+    pub fn new(fundamental: f32, overtones: Vec<f32>) -> Self {
+        let voices = (0..overtones.len() + 1)
+            .map(|_i| Sine::new(fundamental))
+            .collect();
+
+        Self {
+            config: ComposeConfig::new(
+                AdditiveConfig {
+                    fundamental,
+                    overtones,
+                },
+                reduce_additive_action,
+            ),
+            mixer: Mixer::new(voices),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct AdditiveConfig {
+    fundamental: f32,
+    overtones: Vec<f32>,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum AdditiveAction {}
+
+fn reduce_additive_action(config: AdditiveConfig, action: AdditiveAction) -> AdditiveConfig {
+    config
+}
+
+impl<V: Waveform<f32>> ConfigReceiver for Additive<V> {
+    fn try_update_configs(&mut self) {
+        self.mixer.try_update_configs()
+    }
+}
+
+impl<V: Waveform<f32>> HasFreq for Additive<V> {
+    fn get_freq(&self) -> f32 {
+        self.config.get().fundamental
+    }
+
+    fn set_freq(&mut self, hz: f32) {
+        self.config.config.config.fundamental = hz;
+    }
+}
+
+impl<V: Waveform<f32>> Voice<f32> for Additive<V> {
+    fn generate(&mut self) -> f32 {
+        for (sine, multiple) in self
+            .mixer
+            .voices
+            .iter_mut()
+            .zip(std::iter::once(&1.0).chain(self.config.get().overtones.iter()))
+        {
+            sine.set_freq(self.config.get().fundamental * (*multiple))
+        }
+
+        self.mixer.generate()
     }
 }

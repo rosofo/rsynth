@@ -5,7 +5,10 @@ use std::{
 
 use crate::{
     chain::Voice,
-    config::{Config, ConfigReceiver, HasConfig, ValidatedConfig, ValidatedConfigClient},
+    config::{
+        ComposeConfig, ComposeConfigClient, Config, ConfigReceiver, HasConfig, ValidatedConfig,
+        ValidatedConfigClient,
+    },
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -14,7 +17,7 @@ pub struct TwoChannelConfig {
     pub b_mix: f32,
 }
 
-fn validate_two_channel_config(config: TwoChannelConfig) -> bool {
+fn validate_two_channel_config(config: &TwoChannelConfig) -> bool {
     let within_range = |vol| vol >= 0.0 && vol <= 1.0;
     within_range(config.a_mix) && within_range(config.b_mix)
 }
@@ -61,4 +64,69 @@ impl<S: Add<Output = S> + Mul<Output = S> + From<f32>, Va: Voice<S>, Vb: Voice<S
         let signal_b = self.b.generate();
         signal_a * self.config.get().a_mix.into() + signal_b * self.config.get().b_mix.into()
     }
+}
+
+pub struct Mixer<V: Voice<f32>> {
+    pub config:
+        ComposeConfig<MixerConfig, MixerAction, fn(MixerConfig, MixerAction) -> MixerConfig>,
+    pub voices: Vec<V>,
+}
+
+pub type MixerClient =
+    ComposeConfigClient<MixerConfig, MixerAction, fn(MixerConfig, MixerAction) -> MixerConfig>;
+
+fn reduce_mixer_action(mut config: MixerConfig, action: MixerAction) -> MixerConfig {
+    match action {
+        MixerAction::Change {
+            channel,
+            volume_change,
+        } => {
+            config.channels[channel] += volume_change;
+        }
+    }
+
+    config
+}
+
+impl<V: Voice<f32>> Mixer<V> {
+    pub fn new(voices: Vec<V>) -> Self {
+        Self {
+            config: ComposeConfig::new(
+                MixerConfig {
+                    channels: vec![0.5; voices.len()],
+                },
+                reduce_mixer_action,
+            ),
+            voices,
+        }
+    }
+}
+
+impl<V: Voice<f32>> ConfigReceiver for Mixer<V> {
+    fn try_update_configs(&mut self) {
+        self.config.try_update();
+    }
+}
+
+impl<V: Voice<f32>> Voice<f32> for Mixer<V> {
+    fn generate(&mut self) -> f32 {
+        let channels = &self.config.get().channels;
+        let output = self
+            .voices
+            .iter_mut()
+            .enumerate()
+            .map(|(channel, voice)| voice.generate() * channels[channel])
+            .sum();
+        output
+    }
+}
+
+#[derive(Clone)]
+pub struct MixerConfig {
+    pub channels: Vec<f32>,
+}
+
+#[derive(Clone, Copy)]
+pub enum MixerAction {
+    Change { channel: usize, volume_change: f32 },
 }

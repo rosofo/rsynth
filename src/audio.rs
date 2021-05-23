@@ -26,7 +26,7 @@ impl Audio {
     }
     pub fn stream_with<F>(&self, f: F) -> Stream
     where
-        F: Fn(&mut [f32]) + Send + 'static,
+        F: FnMut(&mut [f32]) + Send + 'static,
     {
         match self.format {
             SampleFormat::F32 => return self.stream_audio_with::<F, f32>(f),
@@ -34,9 +34,9 @@ impl Audio {
         };
     }
 
-    fn stream_audio_with<F, T>(&self, f: F) -> Stream
+    fn stream_audio_with<F, T>(&self, mut f: F) -> Stream
     where
-        F: Fn(&mut [T]) + Send + 'static,
+        F: FnMut(&mut [T]) + Send + 'static,
         T: Sample,
     {
         let data_callback = move |data: &mut [T], _: &cpal::OutputCallbackInfo| {

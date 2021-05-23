@@ -15,6 +15,7 @@ use crossterm::{
 use effects::{Gate, LowPassFilter, FM};
 use synth::Synth;
 
+use tui::layout::Direction;
 use ui::{
     components::{ChainComponent, TwoChannelComponent, UIComponent},
     draw_synth, get_terminal, input,
@@ -26,9 +27,12 @@ use crate::{
     config::HasConfig,
     controllers::{KBCConfig, KeyboardController},
     ui::{
-        components::{KeyboardInputComponent, VoiceComponent},
+        components::{
+            AdditiveComponent, KeyboardInputComponent, MixerComponent, NavigationContainer,
+        },
         input::parse_input_event,
     },
+    voices::Additive,
 };
 
 mod audio;
@@ -42,40 +46,36 @@ mod ui;
 mod voices;
 
 fn main() {
-    let mut voice_a = Sine::new(440.0);
-    let voice_a_client = voice_a.config.get_client().unwrap();
-    let mut ctrl = KeyboardController::new(voice_a);
+    let mut additive = Additive::new(440.0, vec![2.0, 4.0, 6.0, 8.0]);
+    let additive_client = additive.config.get_client().unwrap();
+    let mixer_client = additive.mixer.config.get_client().unwrap();
+    let fm = FM::new(additive, Sine::new(440.0));
+    let mut ctrl = KeyboardController::new(fm);
     let ctrl_client = ctrl.config.get_client().unwrap();
 
-    let mut voice_b = Sine::new(440.0);
-    let voice_b_client = voice_b.config.get_client().unwrap();
-    let chain_a = Chain::new();
-    let chain_b = Chain::new();
-    let mut mixer = TwoChannel::new(Chained::new(ctrl, chain_a), Chained::new(voice_b, chain_b));
-    let mixer_client = mixer.config.get_client().unwrap();
-
     let mut synth = Synth::new();
-    synth.play(Arc::new(Mutex::new(mixer)));
+    synth.play(ctrl);
 
     let ui_model = UIModel::new(
         KeyboardInputComponent {
             controller_clients: vec![ctrl_client],
         },
-        TwoChannelComponent {
-            client: Arc::new(Mutex::new(mixer_client)),
-            selected_channel: 0,
-        },
-        ChainComponent {
-            components: vec![Box::new(VoiceComponent::new(voice_a_client))],
-        },
-        ChainComponent {
-            components: vec![Box::new(VoiceComponent::new(voice_b_client))],
-        },
+        NavigationContainer::new(
+            vec![
+                Box::new(MixerComponent {
+                    client: mixer_client,
+                }) as Box<dyn UIComponent + Send + 'static>,
+                Box::new(AdditiveComponent {
+                    client: additive_client,
+                }) as Box<dyn UIComponent + Send + 'static>,
+            ],
+            Direction::Horizontal,
+        ),
     );
     start(ui_model);
 }
 
-fn start(ui_model: UIModel) {
+fn start<C: UIComponent + Send + 'static>(ui_model: UIModel<C>) {
     let ui_model = Arc::new(Mutex::new(ui_model));
     let ui_model_arc_copy = Arc::clone(&ui_model);
     let (sender, receiver) = std::sync::mpsc::channel();

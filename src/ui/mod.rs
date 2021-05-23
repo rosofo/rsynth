@@ -28,7 +28,7 @@ use crate::{
 };
 
 use self::{
-    components::{RefWidget, WrapperWidget},
+    components::{RefWidget, UIComponent, WrapperWidget},
     model::UIModel,
 };
 
@@ -38,9 +38,9 @@ pub fn get_terminal() -> std::io::Result<Terminal<CrosstermBackend<Stdout>>> {
     Terminal::new(backend)
 }
 
-pub fn draw_synth<'a, B: Backend>(
+pub fn draw_synth<'a, B: Backend, C: UIComponent>(
     terminal: &'a mut Terminal<B>,
-    ui_model: &Arc<Mutex<UIModel>>,
+    ui_model: &Arc<Mutex<UIModel<C>>>,
 ) -> std::io::Result<CompletedFrame<'a>> {
     let model = ui_model.lock().unwrap();
 

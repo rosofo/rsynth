@@ -34,11 +34,9 @@ impl std::fmt::Display for Mode {
     }
 }
 
-pub struct UIModel {
+pub struct UIModel<C: UIComponent> {
     pub keyboard_input: KeyboardInputComponent,
-    pub mixer: TwoChannelComponent,
-    pub chain_a: ChainComponent,
-    pub chain_b: ChainComponent,
+    pub component: C,
     mode: Mode,
     location: UILocation,
 }
@@ -73,42 +71,13 @@ impl UILocation {
     }
 }
 
-impl UIModel {
-    pub fn new(
-        keyboard_input: KeyboardInputComponent,
-        mixer: TwoChannelComponent,
-        chain_a: ChainComponent,
-        chain_b: ChainComponent,
-    ) -> Self {
+impl<C: UIComponent> UIModel<C> {
+    pub fn new(keyboard_input: KeyboardInputComponent, component: C) -> Self {
         Self {
             mode: Mode::Keyboard,
             keyboard_input,
-            mixer,
-            chain_a,
-            chain_b,
+            component,
             location: UILocation::default(),
-        }
-    }
-
-    fn handle_movement(&mut self, event: InputEvent) {
-        if self.location.at_root() {
-            match event {
-                InputEvent::Right => self.location.right(),
-                InputEvent::Left => self.location.left(),
-                InputEvent::Enter => self.location.enter(),
-                _ => (),
-            }
-        } else if event == InputEvent::Back {
-            self.location.up()
-        }
-    }
-
-    fn dispatch_to_focused(&mut self, event: InputEvent) {
-        match self.location.focused {
-            Some(0) => self.mixer.dispatch(event),
-            Some(1) => self.chain_a.dispatch(event),
-            Some(2) => self.chain_b.dispatch(event),
-            _ => {}
         }
     }
 
@@ -117,35 +86,14 @@ impl UIModel {
     }
 }
 
-impl RefWidget for UIModel {
+impl<C: UIComponent> RefWidget for UIModel<C> {
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        let layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(20),
-                Constraint::Percentage(40),
-                Constraint::Percentage(40),
-            ])
-            .split(area);
-
-        let selected_block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Blue));
-        match self.location.selected {
-            0 => selected_block.render(layout[0], buf),
-            1 => selected_block.render(layout[1], buf),
-            2 => selected_block.render(layout[2], buf),
-            _ => {}
-        }
-        self.mixer.render(layout[0], buf);
-        self.chain_a.render(layout[1], buf);
-        self.chain_b.render(layout[2], buf);
-
+        self.component.render(area, buf);
         Paragraph::new(self.mode.to_string()).render(area, buf);
     }
 }
 
-impl UIComponent for UIModel {
+impl<C: UIComponent> UIComponent for UIModel<C> {
     fn dispatch(&mut self, event: InputEvent) {
         if let InputEvent::SwitchMode = event {
             self.mode = if self.mode == Mode::Config {
@@ -159,8 +107,7 @@ impl UIComponent for UIModel {
         if self.mode == Mode::Keyboard {
             self.play_key(event)
         } else {
-            self.handle_movement(event);
-            self.dispatch_to_focused(event);
+            self.component.dispatch(event)
         }
     }
 }

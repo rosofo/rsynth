@@ -15,7 +15,7 @@ pub struct ConfigClient<C> {
     current: C,
 }
 
-impl<C: Copy> ConfigClient<C> {
+impl<C: Clone> ConfigClient<C> {
     pub fn new(sender: Sender<C>, config: C) -> Self {
         Self {
             sender,
@@ -23,22 +23,21 @@ impl<C: Copy> ConfigClient<C> {
         }
     }
 
-    pub fn update<F: FnOnce(C) -> C>(&mut self, f: F) {
-        let new_config = f(self.get());
-        self.sender.send(new_config).unwrap();
-        self.current = new_config
+    pub fn update<F: FnOnce(&mut C)>(&mut self, f: F) {
+        f(&mut self.current);
+        self.sender.send(self.current.clone()).unwrap();
     }
 
     pub fn get(&self) -> C {
-        self.current
+        self.current.clone()
     }
 }
 
-impl<C: Copy> Config<C> {
+impl<C: Clone> Config<C> {
     pub fn new(config: C) -> Self {
         let (sender, receiver) = mpsc::channel();
         Self {
-            config,
+            config: config.clone(),
             client: Some(ConfigClient::new(sender, config)),
             receiver,
         }
@@ -60,16 +59,16 @@ pub trait ConfigReceiver {
 }
 
 pub trait HasConfig<C> {
-    fn get(&self) -> C;
+    fn get<'a>(&'a self) -> &'a C;
 }
 
 pub struct ComposeConfig<C, D, F: Fn(C, D) -> C> {
-    config: Config<C>,
+    pub config: Config<C>,
     client: Option<ComposeConfigClient<C, D, F>>,
     _phantom: PhantomData<D>,
 }
 
-impl<C: Copy, D, F: Fn(C, D) -> C> ComposeConfig<C, D, F> {
+impl<C: Clone, D, F: Fn(C, D) -> C> ComposeConfig<C, D, F> {
     pub fn new(default: C, f: F) -> Self {
         let mut config = Config::new(default);
         let config_client = config.get_client().unwrap();
@@ -90,11 +89,11 @@ impl<C: Copy, D, F: Fn(C, D) -> C> ComposeConfig<C, D, F> {
     }
 }
 
-impl<C: Copy> ValidatedConfig<C> {
-    pub fn new_validated<V: Fn(C) -> bool + 'static + Send>(default: C, validator: V) -> Self {
+impl<C: Clone> ValidatedConfig<C> {
+    pub fn new_validated<V: Fn(&C) -> bool + 'static + Send>(default: C, validator: V) -> Self {
         Self::new(
             default,
-            Box::new(move |old, new| if validator(new) { new } else { old }),
+            Box::new(move |old, new| if validator(&new) { new } else { old }),
         )
     }
 }
@@ -105,7 +104,7 @@ pub struct ComposeConfigClient<C, D, F: Fn(C, D) -> C> {
     _phantom: PhantomData<D>,
 }
 
-impl<C: Copy, D, F: Fn(C, D) -> C> ComposeConfigClient<C, D, F> {
+impl<C: Clone, D, F: Fn(C, D) -> C> ComposeConfigClient<C, D, F> {
     pub fn new(f: F, client: ConfigClient<C>) -> Self {
         Self {
             f,
@@ -114,11 +113,11 @@ impl<C: Copy, D, F: Fn(C, D) -> C> ComposeConfigClient<C, D, F> {
         }
     }
 
-    pub fn update<G: Fn(C) -> D>(&mut self, g: G) {
-        let x = g(self.client.get());
+    pub fn update<G: Fn(&C) -> D>(&mut self, g: G) {
+        let x = g(&self.client.current);
 
         let c = (self.f)(self.client.get(), x);
-        self.client.update(|_c| c);
+        self.client.update(|old| *old = c);
     }
 
     pub fn get(&self) -> C {
@@ -126,9 +125,9 @@ impl<C: Copy, D, F: Fn(C, D) -> C> ComposeConfigClient<C, D, F> {
     }
 }
 
-impl<C: Copy, D, F: Fn(C, D) -> C> HasConfig<C> for ComposeConfig<C, D, F> {
-    fn get(&self) -> C {
-        self.config.config
+impl<C: Clone, D, F: Fn(C, D) -> C> HasConfig<C> for ComposeConfig<C, D, F> {
+    fn get(&self) -> &C {
+        &self.config.config
     }
 }
 

@@ -1,6 +1,8 @@
 use std::{
     borrow::BorrowMut,
+    cell::RefCell,
     marker::PhantomData,
+    rc::Rc,
     sync::{Arc, Mutex},
 };
 
@@ -27,12 +29,11 @@ impl<V: Voice<f32> + Send> Synth<V> {
         }
     }
 
-    pub fn play(&mut self, voice: Arc<Mutex<V>>) {
+    pub fn play(&mut self, mut voice: V) {
         if self.stream.is_none() {
             let stream = self.audio.stream_with(move |data: &mut [f32]| {
-                let mut v = voice.lock().unwrap();
-                v.try_update_configs();
-                put_samples(&mut *v, data);
+                voice.try_update_configs();
+                put_samples(&mut voice, data);
             });
             stream.play().unwrap();
             self.stream = Some(stream);
